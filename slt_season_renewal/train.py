@@ -19,10 +19,6 @@ from sklearn.metrics import (
 from logzero import logger
 
 
-def objective(trial, x, y):
-    pass 
-    #TODO: Not sure what all needs to go here.
-
 def calc_feature_importances(estimator, x, y, num_features=10):
     """
     Function to print feature importances in descending order
@@ -127,7 +123,7 @@ def train_models(df, n_trials, training_timeout, model_logger):
     None
 
     """
-
+    logger.info(f"Begin train_model")
     df['target'] = df['bought_next_season']
     formula = """target ~  
             price +
@@ -197,11 +193,12 @@ def train_models(df, n_trials, training_timeout, model_logger):
 
     model = HistGradientBoostingClassifier(class_weight='balanced',early_stopping = True, n_iter_no_change=15)
 
+    logger.info(f"Model Evaluation Model Fit")
     results = model.fit(X,y_ravel)
     df['model_eval_prediction'] = results.predict(X)
     df['model_eval_probability'] = results.predict_proba(X)[:,1]
 
-    #TODO: Add Model Fit Evaluation
+
 
     # split dataset to training/testing sets
     test_date = df['season'].max()-2
@@ -213,6 +210,7 @@ def train_models(df, n_trials, training_timeout, model_logger):
     y_train = y.loc[y.index.isin(train_indices)]
     y_test = y.loc[y.index.isin(test_indices)]
 
+    logger.info(f"Model Test Fit")
     y_train_ravel = np.ravel(y_train)
     train_results = model.fit(X_train,y_train_ravel)
     test_predictions = train_results.predict(X_test)
@@ -222,17 +220,17 @@ def train_models(df, n_trials, training_timeout, model_logger):
     test_df['probability'] = test_probability[:,1]
     test_df['prediction'] = test_predictions
 
-    #TODO: Add testing validation (this is somewhat biased and we probably need a better way to test since we are always based off of last year's predicitons.)
+    #TODO: Add more robust testing validation (this is somewhat biased and we probably need a better way to test since we are always based off of last year's predicitons.)
     #Unfortunately, we don't really have any better way to do that right now, especially since there is such limited data.
 
-
+    logger.info(f"Calculate scores for Model Eval")
     # calculate model evaluation metrics
     model_eval_recall = recall_score(df['target'], df['model_eval_prediction'])
     model_eval_precision = precision_score(df['target'], df['model_eval_prediction'])
     model_eval_accuracy = accuracy_score(df['target'], df['model_eval_prediction'])
     model_eval_roc_auc = roc_auc_score(df['target'], df['model_eval_prediction'])
 
-
+    logger.info(f"Calculate scores for Model Test")
     # calculate test evaluation metrics
     test_eval_recall = recall_score(y_test, test_df['prediction'])
     test_eval_precision = precision_score(y_test, test_df['prediction'])
@@ -240,6 +238,7 @@ def train_models(df, n_trials, training_timeout, model_logger):
     test_eval_roc_auc = roc_auc_score(y_test, test_df['prediction'])
 
     # log metrics
+    logger.info(f"Log score metrics")
     model_logger.log_metric(key="model_eval_recall", value=model_eval_recall)
     model_logger.log_metric(key="model_eval_precision", value=model_eval_precision)
     model_logger.log_metric(key="model_eval_accuracy", value=model_eval_accuracy)
@@ -249,6 +248,7 @@ def train_models(df, n_trials, training_timeout, model_logger):
     model_logger.log_metric(key="test_eval_accuracy", value=test_eval_accuracy)
     model_logger.log_metric(key="test_eval_auc", value=test_eval_roc_auc)
 
+    logger.info(f"Start Model Logger")
     # log visualizations
     plotter = ModelPlotter(
         estimator=model,
@@ -264,6 +264,7 @@ def train_models(df, n_trials, training_timeout, model_logger):
     )
     plotter.generate_plots()
 
+    logger.info(f"Calculate Feature Importance")
     fig, importances = calc_feature_importances(
         model,
         x=X_test,
@@ -291,6 +292,7 @@ def train_models(df, n_trials, training_timeout, model_logger):
     )
 
     # save model
+    logger.info(f"Saving Model")
     model_logger.log_model(model, register=True, train=X, target=df['target'])
     model_logger.end_run()
 

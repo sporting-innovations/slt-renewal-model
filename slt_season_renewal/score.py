@@ -5,7 +5,7 @@ import patsy
 import datetime
 from logzero import logger
 
-def score(attr_creator, model_logger,season_type_filter):
+def score(attr_creator, model_logger,season_type_filter,org_mnemonic):
     """
     Applies the model to a set of fans
 
@@ -17,6 +17,7 @@ def score(attr_creator, model_logger,season_type_filter):
         ModelLogger used to load stored model
 
     """
+    logger.info(f"Start Scoring")
     attribute_key = f"{season_type_filter.lower()}_renewal_risk_score" #keeping the name renewal_risk_score, but in this case it is likelihood to renew (bigger number= more likely)
 
     write_to_profile = bool(strtobool(os.getenv("WRITE_TO_PROFILE", "False")))
@@ -31,8 +32,10 @@ def score(attr_creator, model_logger,season_type_filter):
         drop=True
     )
 
-    #TODO: fitler score_df to only the current week index. Make sure I'm using the correct rows. (My data should be aggregated before the week I'm predicting not as of the week I'm predicting.)
-    score_df = score_df.loc[(score_df['start_of_freq']<=datetime.datetime.today()) & (score_df['end_of_freq']>=datetime.datetime.today())].reset_index(drop=True)
+    logger.info(f"Filter Score to Current Week")
+    season_freq_index_prediction_freq = score_df.loc[(score_df['start_of_freq']<=datetime.datetime.today()) & (score_df['end_of_freq']>=datetime.datetime.today()),'season_freq_index_calculation'].mean()-1
+    score_df = score_df.loc[score_df['season_freq_index_calculation']==season_freq_index_prediction_freq]
+    score_df['org_mnemonic'] = org_mnemonic
 
     score_df['target'] = score_df['bought_next_season']
     formula = """target ~  
@@ -104,15 +107,16 @@ def score(attr_creator, model_logger,season_type_filter):
     # convert internal pandas column types to numpy compatible ones
     # score_df = cast_to_numpy(score_df.convert_dtypes(dtype_backend="numpy_nullable")) #I hope I don't need this, but leaving it here for now in case I do.
 
-
     # Prediction
     logger.info("Scoring")
     renewal_risk_score = model.predict_proba(X)[:,1]
     score_df[attribute_key] = renewal_risk_score
     score_df['scoring_date'] = pd.to_datetime("today")
+    score_df.loc[score_df['bought_next_season']==1,attribute_key] = 1.0
 
     # if write to profile is true: log output results to s3 and write attributes to ES
     if write_to_profile:
+        logger.info(f"Writing Score Attribute")
         # log results
         # keep just latest values for update_db_table
         model_logger.s3_manager.write_df(
@@ -137,6 +141,4 @@ def score(attr_creator, model_logger,season_type_filter):
             attr_name=attribute_key,
             new_df=score_df[[attribute_key, "external_link_id", "org_mnemonic"]],
         )
-    #TODO: Need to overwrite those that have bought a ticket since the last scoring.
-    #TODO: makes ure that the org_mnemonic is being written.
     logger.info("Scoring complete")

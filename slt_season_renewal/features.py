@@ -242,7 +242,7 @@ def feature_engineering(
         .pipe(pd.merge,df_events,how='left',on='event_id',)
         .pipe(filter_for_contains,'ticket_id',df_th['ticket_id'].unique())
         .pipe(derive_year,'start_datetime')
-        .pipe(calculate_purchase_days) #TODO: Double check this one. Make sure purchase days is the days from purchase to start of season.
+        .pipe(calculate_purchase_days) 
     )
 
     #Not sure this replace is actually needed anymore, but won't hurt anything.
@@ -258,6 +258,7 @@ def feature_engineering(
     grouped_dfs_t['updated_event_category'].fillna('Broadway')
 
     #Enforce only looking at Concert or Broadway Events.
+    logger.info(f"Reinforce season_type_filter")
     if season_type_filter == 'Concert':
         grouped_dfs_t = grouped_dfs_t.loc[grouped_dfs_t['updated_event_category']=='Concert']
     else:
@@ -270,7 +271,7 @@ def feature_engineering(
     grouped_dfs_2 = grouped_dfs_t.groupby(['external_link_id','start_datetime_year']).agg(
             price=('price','sum'),
             tickets_bought=('price','count'),
-            purchase_days=('purchase_days','mean'), #TODO: I think this part is wrong
+            purchase_days=('purchase_days','mean'), #TODO: This feature works, but I could calculate purchase days more accurately.
             date_purchased=('transaction_datetime','min')
     ).reindex(new_index).reset_index()
     grouped_dfs_2 = grouped_dfs_2.rename(columns={
@@ -278,6 +279,7 @@ def feature_engineering(
         'level_1':'season'
     })
 
+    logger.info(f"Calculating Current Season Ticket Features")
     grouped_dfs_2 = grouped_dfs_2.sort_values(by=['external_link_id','season'])
     grouped_dfs_2['did_buy_this_season'] = np.where(grouped_dfs_2['price'].notna(),1,0)
     #Adding some features here because it's easier. These are features that have to do with
@@ -296,6 +298,7 @@ def feature_engineering(
     grouped_dfs_2['rolling_purchase_days_variance'] = grouped_dfs_2.groupby(['external_link_id'])['purchase_days'].transform(lambda x:x.expanding().var())
     grouped_dfs_2['average_ticket_price'] = grouped_dfs_2['price']/grouped_dfs_2['tickets_bought']
     grouped_dfs_2['bought_next_season'] = grouped_dfs_2.groupby(['external_link_id'])['did_buy_this_season'].transform('shift',periods=-1)
+    logger.info(f"Merging data with frequency periods.")
     grouped_dfs_2 = grouped_dfs_2.merge(season_start_end_lookup[['current_season_start','current_season_end','start_of_freq','end_of_freq','season','season_freq_index_calculation','season_freq_index_prediction_freq']],how='left')
 
     grouped_dfs_2.loc[:,'bought_next_season_this_week'] = np.where(
@@ -316,6 +319,7 @@ def feature_engineering(
             'education_level',
                     'income_level']].fillna('Unknown')
     
+    logger.info(f"Calculating time based features")
     #Add Time Sensitive Donor Data
     grouped_dfs_2_with_tbf = add_time_based_features(grouped_dfs_2,
                                 appendage=df_donor,
@@ -440,7 +444,7 @@ def feature_engineering(
                                                         'note_id':'num_non_connected_touchpoints'
                                                     }
                                                     )
-
+    logger.info(f"Calculate Cumulative and Season Cumulative Features")
     #Calculcate Time Sensitive cumulative values across the years and within seasons.
     grouped_dfs_2_with_tbf = (
         grouped_dfs_2_with_tbf
@@ -505,13 +509,10 @@ def feature_engineering(
         (
             (
                 (grouped_dfs_2_with_tbf['season']==grouped_dfs_2_with_tbf['season'].max()-1) 
-             & (grouped_dfs_2_with_tbf['bought_next_season']==0)
-            
             )
         )
     ]
 
-    #TODO: Add logging to say when stuff is written and whether anything needed to be written.
     logger.info(f"Writing score and train.")
     model_logger.s3_manager.write_df(
         df=score_df,

@@ -78,7 +78,7 @@ def main():
             model_logger.set_experiment(f"datasci-SLT-renewal:{event_type}")
         else: 
             model_logger.set_experiment(f"datasci-SLT-renewal:{event_type}")
-        score(attr_creator, model_logger,season_type_filter=event_type)
+        score(attr_creator, model_logger,season_type_filter=event_type,org_mnemonic=org_mnemonic)
 
     # elif args.method == "update_db":
     #     db_manager = DatabaseManager(
