@@ -1,0 +1,71 @@
+version: '3'
+
+services:
+  features:
+    volumes:
+      - /Users/${COMPOSE_USER}/.ssh/id_rsa:/Users/${COMPOSE_USER}/.ssh/id_rsa
+      - ./dockerfs/ssh-config:/root/.ssh/config
+      - ./:/opt/data-science
+    env_file:
+      - slt_season_renewal.env
+    environment:
+      - SSH_CONFIG_FILE=~/.ssh/config
+    stdin_open: true
+    tty: true
+    image: slt-renewal-model
+    shm_size: '2gb'
+    command: features
+  train:
+    volumes:
+      - /Users/${COMPOSE_USER}/.ssh/id_rsa:/Users/${COMPOSE_USER}/.ssh/id_rsa
+      - ./dockerfs/ssh-config:/root/.ssh/config
+      - ./:/opt/data-science
+    env_file:
+      - slt_season_renewal.env
+    environment:
+      - SSH_CONFIG_FILE=~/.ssh/config
+    stdin_open: true
+    tty: true
+    image: slt-renewal-model
+    shm_size: '2gb'
+    command: train
+  score:
+    volumes:
+      - /Users/${COMPOSE_USER}/.ssh/id_rsa:/Users/${COMPOSE_USER}/.ssh/id_rsa
+      - ./dockerfs/ssh-config:/root/.ssh/config
+      - ./:/opt/data-science
+    env_file:
+      - slt_season_renewal.env
+    environment:
+      - SSH_CONFIG_FILE=~/.ssh/config
+    stdin_open: true
+    tty: true
+    image: slt-renewal-model
+    command: score
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+    - 9090
+    command:
+    - --config.file=/etc/prometheus/prometheus.yml
+    - --storage.tsdb.path=/prometheus
+    volumes:
+    - ./dockerfs/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    - ./dockerfs/prometheus:/prometheus
+    depends_on:
+    - cadvisor
+  cadvisor:
+    image: gcr.io/google-containers/cadvisor:latest
+    container_name: cadvisor
+    ports:
+    - 8080:8080
+    volumes:
+    - /:/rootfs:ro
+    - /var/run:/var/run:rw
+    - /sys:/sys:ro
+    - /var/lib/docker/:/var/lib/docker:ro
+  grafana:
+    image: grafana/grafana:5.4.0
+    ports:
+      - 3000:3000

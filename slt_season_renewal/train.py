@@ -7,7 +7,6 @@ import pandas as pd
 from fan360_ds_utils.pandas_helpers import cast_to_numpy
 from fan360_ds_utils import ModelPlotter
 from sklearn.metrics import roc_curve, auc
-import seaborn as sns
 from sklearn.inspection import permutation_importance
 from sklearn.metrics import (
     recall_score,
