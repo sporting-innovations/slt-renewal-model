@@ -2,7 +2,7 @@ import json
 import numpy as np
 import pandas as pd
 import datetime
-#TODO: Add a logger
+from logzero import logger
 
 def derive_year(df,date_field):
     df[f"{date_field}_year"] = df[date_field].dt.year
@@ -96,6 +96,7 @@ def feature_engineering(
     """
 
     #Pull Events
+    logger.info(f"Pulling Events")
     df_events = bq.query(f"""
         select * from events
         where org_mnemonic = '{org_mnemonic}'
@@ -112,6 +113,7 @@ def feature_engineering(
         df_events = df_events.loc[df_events['updated_event_category']=='Broadway']
 
     #Pull Purchaser
+    logger.info(f"Pulling Purchaser")
     df_purchaser = bq.query(f"""
     select * from ticket_purchaser
     where org_mnemonic = '{org_mnemonic}'
@@ -119,6 +121,7 @@ def feature_engineering(
     df_purchaser['transaction_datetime'] = pd.to_datetime(df_purchaser['transaction_datetime'])
 
     #Pull Ticket History
+    logger.info(f"Pulling Ticket History")
     df_th = bq.query(f"""
         select * from ticket_history
         where org_mnemonic = '{org_mnemonic}'
@@ -130,6 +133,7 @@ def feature_engineering(
     ticket_id_customer_id_list = df_th['ticket_id_customer_id'].unique()
 
     #Pull Scans (THIS IS NECESSARY BECAUSE SLT DOES NOT SHOW WHETHER A SCANNED TICKET IS A SEASON TICKET AS OF 2/19/2026)
+    logger.info(f"Pulling Scans")
     df_scans = bq.query(f"""
         select * from ticket_history
         where org_mnemonic = '{org_mnemonic}'
@@ -140,24 +144,28 @@ def feature_engineering(
     df_scans['transaction_datetime'] = pd.to_datetime(df_scans['transaction_datetime'])
 
     #Pull Mobile Comms
+    logger.info(f"Pulling Mobile Comms")
     df_mobile_comms = bq.query(f"""
         select * from mobile_comms
         where org_mnemonic = '{org_mnemonic}'
     """).to_df()
 
     #Pull Donor
+    logger.info(f"Pulling Donor")
     df_donor = bq.query(f"""
         select * from donor
         where org_mnemonic = '{org_mnemonic}'
     """).to_df()
 
     #Pull Touchpoints
+    logger.info(f"Pulling Touchpoints")
     df_touchpoints = bq.query(f"""
         select * from touchpoints
         where org_mnemonic = '{org_mnemonic}'
     """).to_df()
 
     #Pull FTS Profile
+    logger.info(f"Pulling Profile Data")
     df_profiles = br.read(
         "fts_profile",
         org_mnemonic=org_mnemonic,
@@ -215,14 +223,16 @@ def feature_engineering(
     df_profiles = df_profiles.drop(["birth_date", "household_income"], axis=1)
 
     #Calculate Estimated Season Start and End Dates
+    logger.info(f"Calculate Estimated Season Start and End Dates")
     season_start_end_lookup = calculate_season_start_end_lookup(df_events=df_events,df_th=df_th)
     season_start_end_lookup = (
-        season_start_end_lookup.pipe(explode_time_series_between_two_dates,'current_season_start','next_season_start','W')
+        season_start_end_lookup.pipe(explode_time_series_between_two_dates,'current_season_start','next_season_start',freq)
     )
 
     #Use season_week_index_calculation to determine the weeks to rollup calculations at
     #Use season_week_index_prediction_week to enforce that we should only use aggregations from the prior weeks
     #when we are in the prediction week (e.g. Only use week 4's calculations, when predicting for week 5.)
+    logger.info(f"Calculate frequency index and frequency prediction index")
     season_start_end_lookup['season_freq_index_calculation'] = season_start_end_lookup.groupby('season')['start_of_freq'].transform('cumcount')
     season_start_end_lookup['season_freq_index_prediction_freq'] = season_start_end_lookup['season_freq_index_calculation'] + 1
     season_start_end_lookup = season_start_end_lookup.reset_index()
@@ -315,7 +325,7 @@ def feature_engineering(
                                     'payment_amount':'sum',
                                     'pledge_amount':'sum'
                                 },
-                                freq='W',fill=0)
+                                freq=freq,fill=0)
     #Add Time Sensitive mobile comms data
     grouped_dfs_2_with_tbf = add_time_based_features(grouped_dfs_2_with_tbf,
                                                     appendage=df_mobile_comms,
@@ -324,7 +334,7 @@ def feature_engineering(
                                                         'communication_id':'nunique'
                                                     },append_level=['external_link_id'],
                                                     fill=pd.NA,
-                                                    freq='W',
+                                                    freq=freq,
                                                     rename_columns={
                                                         'communication_id':'count_of_mobile_comms'
                                                     }
@@ -338,7 +348,7 @@ def feature_engineering(
                                                         'communication_id':'nunique'
                                                     },append_level=['external_link_id'],
                                                     fill=pd.NA,
-                                                    freq='W',
+                                                    freq=freq,
                                                     rename_columns={
                                                         'communication_id':'count_of_mobile_comms_viewed'
                                                     }
@@ -352,7 +362,7 @@ def feature_engineering(
                                                         'communication_id':'nunique'
                                                     },append_level=['external_link_id'],
                                                     fill=pd.NA,
-                                                    freq='W',
+                                                    freq=freq,
                                                     rename_columns={
                                                         'communication_id':'count_of_mobile_comms_engaged'
                                                     }
@@ -369,7 +379,7 @@ def feature_engineering(
                                                         'ticket_id':'nunique'
                                                     },append_level=['external_link_id'],
                                                     fill=0,
-                                                    freq='W',
+                                                    freq=freq,
                                                     rename_columns={
                                                         'ticket_id':'count_of_scans'
                                                     }
@@ -383,7 +393,7 @@ def feature_engineering(
                                                         'note_id':'nunique'
                                                     },append_level=['external_link_id'],
                                                     fill=0,
-                                                    freq='W',
+                                                    freq=freq,
                                                     rename_columns={
                                                         'note_id':'num_touchpoints'
                                                     }
@@ -404,7 +414,7 @@ def feature_engineering(
                                                         'note_id':'nunique'
                                                     },append_level=['external_link_id'],
                                                     fill=0,
-                                                    freq='W',
+                                                    freq=freq,
                                                     rename_columns={
                                                         'note_id':'num_connected_touchpoints'
                                                     }
@@ -425,7 +435,7 @@ def feature_engineering(
                                                         'note_id':'nunique'
                                                     },append_level=['external_link_id'],
                                                     fill=0,
-                                                    freq='W',
+                                                    freq=freq,
                                                     rename_columns={
                                                         'note_id':'num_non_connected_touchpoints'
                                                     }
@@ -459,9 +469,7 @@ def feature_engineering(
 
 
     t = grouped_dfs_2_with_tbf.loc[grouped_dfs_2_with_tbf['freq_of_purchase']==1,['external_link_id','season','season_freq_index_calculation']].sort_values(by=['external_link_id','season'])
-
     t['rolling_mean_freq_of_purchase'] = t.groupby('external_link_id')['season_freq_index_calculation'].transform(lambda x: x.expanding().mean())
-
     grouped_dfs_2_with_tbf = grouped_dfs_2_with_tbf.merge(t[['external_link_id','season','rolling_mean_freq_of_purchase']],how='left',on=['external_link_id','season'])
     grouped_dfs_2_with_tbf['freq_distance_from_average_purchase_freq'] = abs(grouped_dfs_2_with_tbf['season_freq_index_calculation']-grouped_dfs_2_with_tbf['rolling_mean_freq_of_purchase'])
 
@@ -469,8 +477,50 @@ def feature_engineering(
 
     #TODO: These need to be reworked to use the rolling counts. It doesn't work when it is at the weekly level.
     #Calculate View Rates
-    grouped_dfs_2_with_tbf['mobile_comms_view_rate'] = grouped_dfs_2_with_tbf['count_of_mobile_comms_viewed'] / grouped_dfs_2_with_tbf['count_of_mobile_comms']
+    # grouped_dfs_2_with_tbf['mobile_comms_view_rate'] = grouped_dfs_2_with_tbf['count_of_mobile_comms_viewed'] / grouped_dfs_2_with_tbf['count_of_mobile_comms']
+    # #Calculate engagement rates
+    # grouped_dfs_2_with_tbf['mobile_comms_engagement_rate'] = grouped_dfs_2_with_tbf['count_of_mobile_comms_engaged'] / grouped_dfs_2_with_tbf['count_of_mobile_comms']
 
+    #Write Datasets with model logger
+    logger.info(f"Filtering for score and train")
+    path = f"{model_logger.artifact_uri_base}/datasci-{org_mnemonic}-renewal:{season_type_filter}"
 
-    #Calculate engagement rates
-    grouped_dfs_2_with_tbf['mobile_comms_engagement_rate'] = grouped_dfs_2_with_tbf['count_of_mobile_comms_engaged'] / grouped_dfs_2_with_tbf['count_of_mobile_comms']
+    train_df = grouped_dfs_2_with_tbf.loc[
+        (grouped_dfs_2_with_tbf['did_buy_this_season']==1) 
+        & 
+        (
+            (grouped_dfs_2_with_tbf['season']<=(grouped_dfs_2_with_tbf['season'].max()-2))
+            | 
+            ((grouped_dfs_2_with_tbf['season']<=grouped_dfs_2_with_tbf['season'].max()-1) & grouped_dfs_2_with_tbf['bought_next_season']==1)
+        )
+        &
+        (grouped_dfs_2_with_tbf['bought_next_season'].notna())
+        &
+        (grouped_dfs_2_with_tbf['date_purchased'].values<pd.to_datetime(grouped_dfs_2_with_tbf['start_of_freq']).values)
+    ]
+
+    score_df = grouped_dfs_2_with_tbf.loc[
+        (grouped_dfs_2_with_tbf['did_buy_this_season']==1) 
+        & 
+        (
+            (
+                (grouped_dfs_2_with_tbf['season']==grouped_dfs_2_with_tbf['season'].max()-1) 
+             & (grouped_dfs_2_with_tbf['bought_next_season']==0)
+            
+            )
+        )
+    ]
+
+    #TODO: Add logging to say when stuff is written and whether anything needed to be written.
+    logger.info(f"Writing score and train.")
+    model_logger.s3_manager.write_df(
+        df=score_df,
+        s3_path=f"{path}/score_df.parquet",
+        partition_cols=["org_mnemonic"],
+    )
+    model_logger.s3_manager.write_df(
+        df=train_df,
+        s3_path=f"{path}/train_df.parquet",
+        partition_cols=["org_mnemonic"],
+    )
+

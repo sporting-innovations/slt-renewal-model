@@ -33,6 +33,8 @@ def main():
     org_mnemonic = 'SLT'
     event_type = os.getenv("EVENT_TYPE",'Broadway')
     freq = os.getenv("FREQ","W")
+    n_trials = None
+    training_timeout = None
 
     model_logger = ModelLogger(
         model_name="slt-renewal-model",
@@ -66,7 +68,7 @@ def main():
             model_logger.set_experiment(f"datasci-SLT-renewal:{event_type}")
         else: 
             model_logger.set_experiment(f"datasci-SLT-renewal:{event_type}")
-        train(model_logger, n_trials, training_timeout) #TODO: Need to add number of trials and training time out.
+        train(model_logger, n_trials, training_timeout) 
     # scoring step
     elif args.method == "score":
         attr_creator = AttributeCreator(
@@ -76,7 +78,7 @@ def main():
             model_logger.set_experiment(f"datasci-SLT-renewal:{event_type}")
         else: 
             model_logger.set_experiment(f"datasci-SLT-renewal:{event_type}")
-        score(attr_creator, model_logger)
+        score(attr_creator, model_logger,season_type_filter=event_type)
 
     # elif args.method == "update_db":
     #     db_manager = DatabaseManager(
