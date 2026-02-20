@@ -80,12 +80,12 @@ def main():
             model_logger.set_experiment(f"datasci-SLT-renewal:{event_type}")
         score(attr_creator, model_logger,season_type_filter=event_type,org_mnemonic=org_mnemonic)
 
-    # elif args.method == "update_db":
-    #     db_manager = DatabaseManager(
-    #         environment=environment,
-    #         system="fan360db",
-    #     )
-        # update_si_renewal_product(db_manager, model_logger, core_utils)
+    elif args.method == "update_db":
+        db_manager = DatabaseManager(
+            environment=environment,
+            system="fan360db",
+        )
+        update_si_renewal_product(db_manager, model_logger, core_utils,season_type_filter=event_type,org_mnemonic=org_mnemonic)
         #TODO: need to figure out what all this update db stuff is.
 
 if __name__ == "__main__":
